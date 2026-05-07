@@ -14,24 +14,23 @@ def tear_down():
     shutil.rmtree(temp_directory)
   except:
     pass
-  _ = sql("DROP DATABASE IF EXISTS {} CASCADE".format(database_name))
-  dbutils.fs.rm(home_directory, True)
+  _ = sql("DROP SCHEMA IF EXISTS {}.{} CASCADE".format(catalog, schema))
 
 # COMMAND ----------
 
 import re
 from pathlib import Path
 
-# このノートブックで作成されるすべてのオブジェクトは、ユーザー固有のデータベースに登録されます。
+# このノートブックで作成されるすべてのオブジェクトは、ユーザー固有のスキーマに登録されます。
 useremail = dbutils.notebook.entry_point.getDbutils().notebook().getContext().userName().get()
 username = useremail.split('@')[0]
 
-# データベースと同様に、実際のコンテンツを指定のパスに保存します。
-home_directory = '/home/{}/aml'.format(username)
-dbutils.fs.mkdirs(home_directory)
-
 # データを別の場所に保存したい場合は、このセルを書き換えてください。
 database_name = '{}_aml'.format(re.sub('\W', '_', username))
+
+# Unity Catalog用のカタログとスキーマ
+catalog = 'main'
+schema = database_name
 
 # ローカルディスクに一時データを保存するパス
 temp_directory = "/tmp/{}/aml".format(username)
@@ -42,7 +41,10 @@ tear_down()
 
 # COMMAND ----------
 
-_ = sql(f"CREATE DATABASE IF NOT EXISTS {database_name} LOCATION '{home_directory}'")
+_ = sql(f"CREATE CATALOG IF NOT EXISTS {catalog}")
+_ = sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{schema}")
+_ = sql(f"USE CATALOG {catalog}")
+_ = sql(f"USE SCHEMA {schema}")
 Path(temp_directory).mkdir(parents=True, exist_ok=True)
 
 # COMMAND ----------
@@ -50,21 +52,23 @@ Path(temp_directory).mkdir(parents=True, exist_ok=True)
 import re
 
 config = {
-  'db_transactions': f"{database_name}.transactions",
-  'db_entities': f"{database_name}.entities",
-  'db_dedupe': f"{database_name}.dedupe",
-  'db_synth_scores': f"{database_name}.synth_scores",
-  'db_structuring': f"{database_name}.structuring",
-  'db_structuring_levels': f"{database_name}.structuring_levels",
-  'db_roundtrips': f"{database_name}.roundtrips",
-  'db_risk_propagation': f"{database_name}.risk_propagation",
-  'db_streetview': f"{database_name}.streetview",
-  'db_dedupe_records': f"{database_name}.dedupe_splink",
+  'db_transactions': f"{catalog}.{schema}.transactions",
+  'db_entities': f"{catalog}.{schema}.entities",
+  'db_dedupe': f"{catalog}.{schema}.dedupe",
+  'db_synth_scores': f"{catalog}.{schema}.synth_scores",
+  'db_structuring': f"{catalog}.{schema}.structuring",
+  'db_structuring_levels': f"{catalog}.{schema}.structuring_levels",
+  'db_roundtrips': f"{catalog}.{schema}.roundtrips",
+  'db_risk_propagation': f"{catalog}.{schema}.risk_propagation",
+  'db_streetview': f"{catalog}.{schema}.streetview",
+  'db_dedupe_records': f"{catalog}.{schema}.dedupe_splink",
+  'catalog': catalog,
+  'schema': schema,
 }
 
 # COMMAND ----------
 
-tables = set(sql("SHOW TABLES IN {}".format(database_name)).toPandas().set_index("tableName").index)
+tables = set(sql("SHOW TABLES IN {}.{}".format(catalog, schema)).toPandas().set_index("tableName").index)
 
 if len(tables) == 0:
   
@@ -96,5 +100,6 @@ if len(tables) == 0:
 # COMMAND ----------
 
 import mlflow
+mlflow.set_registry_uri("databricks-uc")
 experiment_name = f"/Users/{useremail}/aml_experiment"
 mlflow.set_experiment(experiment_name) 
